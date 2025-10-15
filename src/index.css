@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg-primary: 255 255 255;
+    --color-bg-secondary: 249 250 251;
+    --color-bg-tertiary: 243 244 246;
+    --color-bg-elevated: 255 255 255;
+    --color-bg-overlay: 0 0 0;
+
+    --color-text-primary: 17 24 39;
+    --color-text-secondary: 75 85 99;
+    --color-text-tertiary: 107 114 128;
+    --color-text-inverse: 255 255 255;
+
+    --color-border-primary: 229 231 235;
+    --color-border-secondary: 209 213 219;
+    --color-border-focus: 59 130 246;
+
+    --color-accent-primary: 37 99 235;
+    --color-accent-primary-hover: 29 78 216;
+    --color-accent-secondary: 16 185 129;
+    --color-accent-danger: 239 68 68;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  }
+
+  :root.dark {
+    --color-bg-primary: 17 24 39;
+    --color-bg-secondary: 31 41 55;
+    --color-bg-tertiary: 55 65 81;
+    --color-bg-elevated: 31 41 55;
+    --color-bg-overlay: 0 0 0;
+
+    --color-text-primary: 243 244 246;
+    --color-text-secondary: 209 213 219;
+    --color-text-tertiary: 156 163 175;
+    --color-text-inverse: 17 24 39;
+
+    --color-border-primary: 55 65 81;
+    --color-border-secondary: 75 85 99;
+    --color-border-focus: 96 165 250;
+
+    --color-accent-primary: 59 130 246;
+    --color-accent-primary-hover: 96 165 250;
+    --color-accent-secondary: 34 197 94;
+    --color-accent-danger: 248 113 113;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+  }
+
+  * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
+  }
+
+  body {
+    background-color: rgb(var(--color-bg-primary));
+    color: rgb(var(--color-text-primary));
+  }
+}
