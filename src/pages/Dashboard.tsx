@@ -9,6 +9,7 @@ export function Dashboard() {
     newNoticesThisWeek: 0,
     awaitingPdfs: 0,
     loading: true,
+    error: null as string | null,
   });
 
   const [jobs, setJobs] = useState({
@@ -87,10 +88,11 @@ export function Dashboard() {
         newNoticesThisWeek: noticesResult.count || 0,
         awaitingPdfs: awaitingResult.count || 0,
         loading: false,
+        error: null,
       });
     } catch (error) {
       console.error('Error loading stats:', error);
-      setStats(prev => ({ ...prev, loading: false }));
+      setStats(prev => ({ ...prev, loading: false, error: error instanceof Error ? error.message : 'Failed to load statistics' }));
     }
   }
 
@@ -208,6 +210,18 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {stats.error && (
+        <div className="bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-red-600 dark:text-red-400 mt-0.5" size={20} />
+            <div className="flex-1">
+              <h4 className="font-semibold text-red-900 dark:text-red-300 mb-1">Connection Error</h4>
+              <p className="text-sm text-red-800 dark:text-red-200">{stats.error}</p>
+              <p className="text-xs text-red-700 dark:text-red-300 mt-2">Please check your Supabase configuration and ensure the database is accessible.</p>
+            </div>
+          </div>
+        </div>
+      )}
       {notifications.length > 0 && (
         <div className="space-y-4">
           {notifications.map((notification) => (
