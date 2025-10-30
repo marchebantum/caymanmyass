@@ -7,6 +7,7 @@ import { Gazettes } from './pages/Gazettes';
 import { Notices } from './pages/Notices';
 import { Settings } from './pages/Settings';
 import { ReviewQueue } from './pages/ReviewQueue';
+import { Monitor } from './pages/Monitor';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="registry" element={<Registry />} />
             <Route path="gazettes" element={<Gazettes />} />
             <Route path="notices" element={<Notices />} />
+            <Route path="monitor" element={<Monitor />} />
             <Route path="settings" element={<Settings />} />
             <Route path="review" element={<ReviewQueue />} />
           </Route>

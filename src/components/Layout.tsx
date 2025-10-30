@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Home, FileText, BookOpen, Bell, Settings, AlertTriangle } from 'lucide-react';
+import { Home, FileText, BookOpen, Bell, Settings, AlertTriangle, Newspaper } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 
 export function Layout() {
@@ -10,6 +10,7 @@ export function Layout() {
     { path: '/registry', icon: FileText, label: 'Registry' },
     { path: '/gazettes', icon: BookOpen, label: 'Gazettes' },
     { path: '/notices', icon: Bell, label: 'Notices' },
+    { path: '/monitor', icon: Newspaper, label: 'Cayman Monitor' },
     { path: '/review', icon: AlertTriangle, label: 'Review Queue' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
