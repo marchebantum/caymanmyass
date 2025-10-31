@@ -114,14 +114,24 @@ export function GazetteAnalyzerPanel() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to analyze gazette');
+        let errorMessage = 'Failed to analyze gazette';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Analysis failed');
+        const errorMsg = result.error || 'Analysis failed';
+        if (errorMsg.includes('parse') || errorMsg.includes('JSON')) {
+          throw new Error('Failed to process gazette response. This may be due to an unexpected format in the gazette PDF. Please try again or contact support if the issue persists.');
+        }
+        throw new Error(errorMsg);
       }
 
       setNotices(result.notices || []);
@@ -133,7 +143,18 @@ export function GazetteAnalyzerPanel() {
       window.dispatchEvent(new CustomEvent('gazette-pdf-analyzed'));
     } catch (err: any) {
       console.error('Gazette analysis error:', err);
-      setError(err.message || 'Failed to process gazette PDF. Please try again.');
+
+      let errorMessage = err.message || 'Failed to process gazette PDF. Please try again.';
+
+      if (err.message?.includes('ANTHROPIC_API_KEY')) {
+        errorMessage = 'AI service is not configured. Please contact your administrator.';
+      } else if (err.message?.includes('Claude API error')) {
+        errorMessage = 'AI service error occurred. Please try again in a few moments.';
+      } else if (err.message?.includes('Network') || err.message?.includes('fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      }
+
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
       setProcessingStep('');

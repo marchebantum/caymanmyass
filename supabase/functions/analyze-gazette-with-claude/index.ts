@@ -145,7 +145,7 @@ STEP 7: FINAL QUALITY CHECKS
 Verify: Valid JSON, all four sections reviewed, correct liquidationType/entityType, final meetings cross-referenced, courtCauseNo captured, no excluded sections, complete entity names, ISO dates, liquidators array has entries, contactEmails is array, no hallucinated info, summary stats match array counts, array properly sorted.
 
 OUTPUT INSTRUCTIONS
-Output ONLY valid JSON (no explanations, no markdown code blocks, no preamble). Do not show thinking. Ensure proper escaping of special characters. Use consistent indentation (2 spaces).`;
+CRITICAL: Output ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no \`\`\`json). Do NOT add any explanatory text before or after the JSON. Start your response with { and end with }. Ensure proper escaping of special characters. Use consistent indentation (2 spaces).`;
 
 interface AnalysisRequest {
   pdf_base64: string;
@@ -183,6 +183,79 @@ interface LiquidationNotice {
   liquidationDate: string | null;
   finalMeetingDate: string | null;
   notes: string;
+}
+
+function parseClaudeResponse(text: string): GazetteResponse {
+  let cleanedText = text.trim();
+
+  const strategies = [
+    () => {
+      const jsonMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1].trim());
+      }
+      return null;
+    },
+    () => {
+      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      return null;
+    },
+    () => {
+      if (cleanedText.startsWith('{') && cleanedText.endsWith('}')) {
+        return JSON.parse(cleanedText);
+      }
+      return null;
+    },
+    () => {
+      const lines = cleanedText.split('\n');
+      const jsonLines = [];
+      let inJson = false;
+
+      for (const line of lines) {
+        if (line.trim().startsWith('{')) {
+          inJson = true;
+        }
+        if (inJson) {
+          jsonLines.push(line);
+        }
+        if (line.trim().endsWith('}') && inJson) {
+          break;
+        }
+      }
+
+      if (jsonLines.length > 0) {
+        return JSON.parse(jsonLines.join('\n'));
+      }
+      return null;
+    },
+    () => {
+      const startIdx = cleanedText.indexOf('{');
+      const endIdx = cleanedText.lastIndexOf('}');
+
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        return JSON.parse(cleanedText.substring(startIdx, endIdx + 1));
+      }
+      return null;
+    }
+  ];
+
+  for (let i = 0; i < strategies.length; i++) {
+    try {
+      const result = strategies[i]();
+      if (result !== null) {
+        console.log(`Successfully parsed JSON using strategy ${i + 1}`);
+        return result as GazetteResponse;
+      }
+    } catch (error) {
+      console.log(`Strategy ${i + 1} failed:`, error.message);
+      continue;
+    }
+  }
+
+  throw new Error("All parsing strategies failed. Response may not contain valid JSON.");
 }
 
 Deno.serve(async (req: Request) => {
@@ -264,19 +337,44 @@ Deno.serve(async (req: Request) => {
     };
 
     console.log(`Analysis complete. Tokens used: ${tokensUsed.total_tokens}`);
+    console.log("Raw Claude response (first 500 chars):", analysisText.substring(0, 500));
 
     let gazetteResponse: GazetteResponse;
     try {
-      const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        gazetteResponse = JSON.parse(jsonMatch[1]);
-      } else {
-        gazetteResponse = JSON.parse(analysisText);
-      }
+      gazetteResponse = parseClaudeResponse(analysisText);
     } catch (parseError) {
       console.error("Failed to parse gazette response JSON:", parseError);
-      console.log("Raw response:", analysisText);
-      throw new Error("Failed to parse Claude response as JSON");
+      console.error("Full raw response:", analysisText);
+      throw new Error(`Failed to parse Claude response as JSON: ${parseError.message}. Response preview: ${analysisText.substring(0, 200)}`);
+    }
+
+    if (!gazetteResponse || typeof gazetteResponse !== 'object') {
+      throw new Error("Claude response is not a valid object");
+    }
+
+    if (!gazetteResponse.liquidations || !Array.isArray(gazetteResponse.liquidations)) {
+      console.warn("Missing or invalid liquidations array, creating empty array");
+      gazetteResponse.liquidations = [];
+    }
+
+    if (!gazetteResponse.gazette || typeof gazetteResponse.gazette !== 'object') {
+      console.warn("Missing gazette metadata in response");
+      gazetteResponse.gazette = {
+        type: gazette_type,
+        issueNumber: issue_number || "Unknown",
+        publicationDate: issue_date || new Date().toISOString().split('T')[0],
+      };
+    }
+
+    if (!gazetteResponse.summary || typeof gazetteResponse.summary !== 'object') {
+      console.warn("Missing summary statistics in response");
+      gazetteResponse.summary = {
+        totalEntities: gazetteResponse.liquidations.length,
+        companiesVoluntary: 0,
+        companiesCourtOrdered: 0,
+        partnershipsVoluntary: 0,
+        entitiesWithFinalMeetings: 0,
+      };
     }
 
     const notices = gazetteResponse.liquidations || [];
