@@ -1,5 +1,3 @@
-// Simplified TypeScript types for Cayman Monitor
-
 export type SignalFlags = {
   financial_decline: boolean;
   fraud: boolean;
@@ -15,7 +13,7 @@ export type ArticleDTO = {
   source: string;
   title: string | null;
   excerpt: string | null;
-  published_at: string | null; // ISO
+  published_at: string | null;
   cayman_flag: boolean;
   signals: SignalFlags;
   reasons: string[];
@@ -49,9 +47,9 @@ export type ListArticlesResponse = {
 
 export type ListArticlesRequest = {
   signal?: keyof SignalFlags;
-  from?: string; // ISO date
-  to?: string;   // ISO date
-  q?: string;    // search query
+  from?: string;
+  to?: string;
+  q?: string;
   source?: string;
   limit?: number;
   cursor?: string;
@@ -74,7 +72,6 @@ export type StatsResponse = {
   }>;
 };
 
-// Database row types (from Supabase)
 export interface ArticleRow {
   id: string;
   url: string;
@@ -119,7 +116,6 @@ export interface IngestRunRow {
   finished_at: string | null;
 }
 
-// Utility type converters
 export function articleRowToDTO(row: ArticleRow): ArticleDTO {
   return {
     id: row.id,
@@ -158,4 +154,3 @@ export function ingestRunRowToDTO(row: IngestRunRow): IngestRunDTO {
     finished_at: row.finished_at,
   };
 }
-
