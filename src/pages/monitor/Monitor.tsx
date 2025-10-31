@@ -145,8 +145,8 @@ export function MonitorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1">
+      <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
+        <div>
           <MonitorFilters
             value={draftFilters}
             onChange={setDraftFilters}
@@ -156,7 +156,7 @@ export function MonitorPage() {
           />
         </div>
 
-        <div className="lg:col-span-3 space-y-6">
+        <div className="space-y-6">
           <MonitorStatsWidget />
 
           {signalFilterNotice && (

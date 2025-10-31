@@ -80,7 +80,7 @@ export function MonitorFilters({ value, onChange, onApply, onReset, isLoading }:
       {/* Signals */}
       <div>
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Risk Signals</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2">
           {SIGNAL_OPTIONS.map((option) => {
             const checked = value.signals.includes(option.key);
             return (
@@ -105,25 +105,26 @@ export function MonitorFilters({ value, onChange, onApply, onReset, isLoading }:
         </div>
       </div>
 
-      {/* Source & Dates */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Source</label>
-          <select
-            value={value.source}
-            onChange={(event) => updateField('source', event.target.value as MonitorFiltersState['source'])}
-            className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {SOURCE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Source */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Source</label>
+        <select
+          value={value.source}
+          onChange={(event) => updateField('source', event.target.value as MonitorFiltersState['source'])}
+          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          {SOURCE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
+      {/* Date Range */}
+      <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From Date</label>
           <input
             type="date"
             value={value.from}
@@ -134,7 +135,7 @@ export function MonitorFilters({ value, onChange, onApply, onReset, isLoading }:
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To Date</label>
           <input
             type="date"
             value={value.to}
@@ -145,16 +146,14 @@ export function MonitorFilters({ value, onChange, onApply, onReset, isLoading }:
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
-        <button
-          type="submit"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-400 dark:disabled:bg-gray-600"
-          disabled={isLoading}
-        >
-          <RefreshCw className={isLoading ? 'animate-spin' : ''} size={18} />
-          Apply Filters
-        </button>
-      </div>
+      <button
+        type="submit"
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-400 dark:disabled:bg-gray-600 transition-colors"
+        disabled={isLoading}
+      >
+        <RefreshCw className={isLoading ? 'animate-spin' : ''} size={18} />
+        Apply Filters
+      </button>
     </form>
   );
 }
