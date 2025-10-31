@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Eye, Download, Trash2, Search, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { AnalyzedGazettePdf, GazetteLiquidationNotice } from '../lib/database.types';
+import { EnhancedGazetteDisplay } from './EnhancedGazetteDisplay';
 
 export function AnalyzedGazettesSection() {
   const [analyzedGazettes, setAnalyzedGazettes] = useState<AnalyzedGazettePdf[]>([]);
@@ -10,6 +11,8 @@ export function AnalyzedGazettesSection() {
   const [selectedGazette, setSelectedGazette] = useState<{
     gazette: AnalyzedGazettePdf;
     notices: GazetteLiquidationNotice[];
+    summaryStats: any;
+    gazetteMetadata: any;
   } | null>(null);
 
   useEffect(() => {
@@ -70,9 +73,19 @@ export function AnalyzedGazettesSection() {
 
       if (error) throw error;
 
+      // Extract gazette metadata and summary stats from the gazette record
+      const summaryStats = (gazette as any).summary_stats || null;
+      const gazetteMetadata = {
+        type: gazette.gazette_type === 'regular' ? 'Gazette' : 'Extraordinary',
+        issueNumber: gazette.issue_number || 'Unknown',
+        publicationDate: gazette.issue_date || '',
+      };
+
       setSelectedGazette({
         gazette,
         notices: notices || [],
+        summaryStats,
+        gazetteMetadata,
       });
     } catch (error) {
       console.error('Error loading notices:', error);
@@ -103,31 +116,6 @@ export function AnalyzedGazettesSection() {
     URL.revokeObjectURL(url);
   }
 
-  function handleExportNoticesCSV() {
-    if (!selectedGazette) return;
-
-    const headers = ['Company Name', 'Appointment Type', 'Appointment Date', 'Liquidator Name', 'Liquidator Contact', 'Confidence'];
-    const rows = selectedGazette.notices.map(notice => [
-      notice.company_name,
-      notice.appointment_type,
-      notice.appointment_date || 'N/A',
-      notice.liquidator_name || 'N/A',
-      notice.liquidator_contact || 'N/A',
-      notice.extraction_confidence,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gazette-${selectedGazette.gazette.issue_number || 'notices'}-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   function formatDate(dateString: string | null) {
     if (!dateString) return 'N/A';
@@ -222,10 +210,18 @@ export function AnalyzedGazettesSection() {
                   </div>
                 </div>
 
-                <div className="mb-3 p-2 bg-gray-50 rounded">
+                <div className="mb-3 p-2 bg-gray-50 rounded space-y-1">
                   <p className="text-sm font-medium text-gray-700">
                     {gazette.notices_count} {gazette.notices_count === 1 ? 'Notice' : 'Notices'} Extracted
                   </p>
+                  {(gazette as any).summary_stats && (
+                    <div className="text-xs text-gray-600 grid grid-cols-2 gap-1">
+                      <div>Vol: {(gazette as any).summary_stats.companiesVoluntary || 0}</div>
+                      <div>Court: {(gazette as any).summary_stats.companiesCourtOrdered || 0}</div>
+                      <div>Partners: {(gazette as any).summary_stats.partnershipsVoluntary || 0}</div>
+                      <div>Final: {(gazette as any).summary_stats.entitiesWithFinalMeetings || 0}</div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
@@ -260,82 +256,30 @@ export function AnalyzedGazettesSection() {
 
       {selectedGazette && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
                   {selectedGazette.gazette.issue_number || 'Gazette'} - Liquidation Notices
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  {selectedGazette.notices.length} {selectedGazette.notices.length === 1 ? 'notice' : 'notices'} from "Voluntary Liquidator and Creditor Notices" section
+                  {selectedGazette.notices.length} {selectedGazette.notices.length === 1 ? 'notice' : 'notices'} from all liquidation-related sections
                 </p>
               </div>
               <button
                 onClick={() => setSelectedGazette(null)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold px-3 py-1"
               >
                 ✕
               </button>
             </div>
             <div className="p-6 overflow-y-auto">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Company Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Appointment Type
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Liquidator
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Contact
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {selectedGazette.notices.map((notice) => (
-                      <tr key={notice.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {notice.company_name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {notice.appointment_type}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                          {formatDate(notice.appointment_date)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {notice.liquidator_name || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {notice.liquidator_contact || 'N/A'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-200 flex gap-3">
-              <button
-                onClick={() => setSelectedGazette(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleExportNoticesCSV}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Export as CSV
-              </button>
+              <EnhancedGazetteDisplay
+                notices={selectedGazette.notices}
+                summaryStats={selectedGazette.summaryStats}
+                gazetteMetadata={selectedGazette.gazetteMetadata}
+                onClose={() => setSelectedGazette(null)}
+              />
             </div>
           </div>
         </div>

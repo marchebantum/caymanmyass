@@ -1,14 +1,31 @@
 import { useState } from 'react';
-import { Upload, Loader, AlertTriangle, X, CheckCircle } from 'lucide-react';
+import { Upload, Loader, AlertTriangle, X, CheckCircle, TrendingUp, Building2, Scale, Users, Calendar } from 'lucide-react';
+
+interface SummaryStats {
+  totalEntities: number;
+  companiesVoluntary: number;
+  companiesCourtOrdered: number;
+  partnershipsVoluntary: number;
+  entitiesWithFinalMeetings: number;
+}
+
+interface GazetteMetadata {
+  type: string;
+  issueNumber: string;
+  publicationDate: string;
+}
 
 interface LiquidationNotice {
-  company_name: string;
-  appointment_type: string;
-  appointment_date: string | null;
-  liquidator_name: string | null;
-  liquidator_contact: string | null;
-  raw_notice_text: string;
-  confidence: string;
+  entityName: string;
+  entityType: string;
+  registrationNo: string | null;
+  liquidationType: string;
+  liquidators: string[];
+  contactEmails: string[];
+  courtCauseNo: string | null;
+  liquidationDate: string | null;
+  finalMeetingDate: string | null;
+  notes: string;
 }
 
 export function GazetteAnalyzerPanel() {
@@ -16,6 +33,8 @@ export function GazetteAnalyzerPanel() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
   const [notices, setNotices] = useState<LiquidationNotice[]>([]);
+  const [summaryStats, setSummaryStats] = useState<SummaryStats | null>(null);
+  const [gazetteMetadata, setGazetteMetadata] = useState<GazetteMetadata | null>(null);
   const [tokensUsed, setTokensUsed] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +84,8 @@ export function GazetteAnalyzerPanel() {
       setIsProcessing(true);
       setError(null);
       setNotices([]);
+      setSummaryStats(null);
+      setGazetteMetadata(null);
       setTokensUsed(null);
 
       setProcessingStep('Analyzing Gazette PDF with Claude...');
@@ -104,6 +125,8 @@ export function GazetteAnalyzerPanel() {
       }
 
       setNotices(result.notices || []);
+      setSummaryStats(result.summary || null);
+      setGazetteMetadata(result.gazette_metadata || null);
       setTokensUsed(result.tokens_used);
       setProcessingStep('Complete!');
 
@@ -119,6 +142,8 @@ export function GazetteAnalyzerPanel() {
 
   function handleClear() {
     setNotices([]);
+    setSummaryStats(null);
+    setGazetteMetadata(null);
     setTokensUsed(null);
     setError(null);
     setIssueNumber('');
@@ -130,9 +155,8 @@ export function GazetteAnalyzerPanel() {
 
     const dataStr = JSON.stringify(
       {
-        gazette_type: gazetteType,
-        issue_number: issueNumber,
-        issue_date: issueDate,
+        gazette_metadata: gazetteMetadata,
+        summary: summaryStats,
         notices_count: notices.length,
         notices: notices,
         tokens_used: tokensUsed,
@@ -145,7 +169,7 @@ export function GazetteAnalyzerPanel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `gazette-${gazetteType}-${issueNumber || 'analysis'}-${Date.now()}.json`;
+    a.download = `gazette-${gazetteMetadata?.issueNumber || issueNumber || 'analysis'}-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -153,14 +177,18 @@ export function GazetteAnalyzerPanel() {
   function handleExportCSV() {
     if (notices.length === 0) return;
 
-    const headers = ['Company Name', 'Appointment Type', 'Appointment Date', 'Liquidator Name', 'Liquidator Contact', 'Confidence'];
+    const headers = ['Entity Name', 'Entity Type', 'Registration No', 'Liquidation Type', 'Liquidation Date', 'Final Meeting Date', 'Liquidators', 'Contact Emails', 'Court Cause No', 'Notes'];
     const rows = notices.map(notice => [
-      notice.company_name,
-      notice.appointment_type,
-      notice.appointment_date || 'N/A',
-      notice.liquidator_name || 'N/A',
-      notice.liquidator_contact || 'N/A',
-      notice.confidence,
+      notice.entityName,
+      notice.entityType,
+      notice.registrationNo || 'N/A',
+      notice.liquidationType,
+      notice.liquidationDate || 'N/A',
+      notice.finalMeetingDate || 'N/A',
+      notice.liquidators.join('; '),
+      notice.contactEmails.join('; '),
+      notice.courtCauseNo || 'N/A',
+      notice.notes,
     ]);
 
     const csv = [headers, ...rows]
@@ -171,7 +199,7 @@ export function GazetteAnalyzerPanel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `gazette-${gazetteType}-notices-${Date.now()}.csv`;
+    a.download = `gazette-${gazetteMetadata?.issueNumber || issueNumber || 'notices'}-${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -309,6 +337,65 @@ export function GazetteAnalyzerPanel() {
 
       {notices.length > 0 && (
         <div className="space-y-4">
+          {gazetteMetadata && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Calendar className="text-blue-600" size={20} />
+                <h4 className="font-semibold text-blue-900">Gazette Information</h4>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-blue-700 font-medium">Type:</span>
+                  <p className="text-blue-900">{gazetteMetadata.type}</p>
+                </div>
+                <div>
+                  <span className="text-blue-700 font-medium">Issue Number:</span>
+                  <p className="text-blue-900">{gazetteMetadata.issueNumber}</p>
+                </div>
+                <div>
+                  <span className="text-blue-700 font-medium">Publication Date:</span>
+                  <p className="text-blue-900">{new Date(gazetteMetadata.publicationDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {summaryStats && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="text-gray-600" size={20} />
+                <h4 className="font-semibold text-gray-900">Summary Statistics</h4>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900">{summaryStats.totalEntities}</div>
+                  <div className="text-xs text-gray-600 mt-1">Total Entities</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-700">{summaryStats.companiesVoluntary}</div>
+                  <div className="text-xs text-green-600 mt-1">Voluntary (Co.)</div>
+                </div>
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-700">{summaryStats.companiesCourtOrdered}</div>
+                  <div className="text-xs text-red-600 mt-1">Court-Ordered</div>
+                </div>
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-700">{summaryStats.partnershipsVoluntary}</div>
+                  <div className="text-xs text-blue-600 mt-1">Partnerships</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-700">{summaryStats.entitiesWithFinalMeetings}</div>
+                  <div className="text-xs text-orange-600 mt-1">Final Meetings</div>
+                </div>
+              </div>
+              {tokensUsed && (
+                <div className="text-xs text-gray-500 mt-3 text-center">
+                  Tokens used: {tokensUsed.total_tokens?.toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-3">
               <CheckCircle className="text-green-600" size={24} />
@@ -317,15 +404,10 @@ export function GazetteAnalyzerPanel() {
                   {notices.length} Liquidation {notices.length === 1 ? 'Notice' : 'Notices'} Extracted
                 </h4>
                 <p className="text-sm text-green-700">
-                  From "Voluntary Liquidator and Creditor Notices" section
+                  From all liquidation-related sections
                 </p>
               </div>
             </div>
-            {tokensUsed && (
-              <div className="text-sm text-green-700">
-                Tokens: {tokensUsed.total_tokens?.toLocaleString()}
-              </div>
-            )}
           </div>
 
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -334,19 +416,19 @@ export function GazetteAnalyzerPanel() {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Company Name
+                      Entity Name
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Appointment Type
+                      Type
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Liquidation
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Date
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Liquidator
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Contact
+                      Liquidators
                     </th>
                   </tr>
                 </thead>
@@ -354,19 +436,45 @@ export function GazetteAnalyzerPanel() {
                   {notices.map((notice, index) => (
                     <tr key={index} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {notice.company_name}
+                        {notice.entityName}
+                        {notice.registrationNo && (
+                          <div className="text-xs text-gray-500 mt-0.5">{notice.registrationNo}</div>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {notice.appointment_type}
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          notice.entityType === 'Partnership' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {notice.entityType === 'Partnership' ? 'Partnership' : 'Company'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          notice.liquidationType === 'Voluntary' ? 'bg-green-100 text-green-800' :
+                          notice.liquidationType === 'Court-Ordered' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {notice.liquidationType}
+                        </span>
+                        {notice.courtCauseNo && (
+                          <div className="text-xs text-gray-500 mt-0.5">{notice.courtCauseNo}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {formatDate(notice.appointment_date)}
+                        {formatDate(notice.liquidationDate)}
+                        {notice.finalMeetingDate && (
+                          <div className="text-xs text-orange-600 mt-0.5">Final: {formatDate(notice.finalMeetingDate)}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {notice.liquidator_name || 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={notice.liquidator_contact || ''}>
-                        {notice.liquidator_contact || 'N/A'}
+                        {notice.liquidators.join(', ')}
+                        {notice.contactEmails.length > 0 && (
+                          <div className="text-xs text-blue-600 mt-0.5">
+                            {notice.contactEmails.map((email, i) => (
+                              <a key={i} href={`mailto:${email}`} className="hover:underline">{email}</a>
+                            )).reduce((prev, curr) => <>{prev}, {curr}</>)}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

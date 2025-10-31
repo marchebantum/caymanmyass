@@ -7,56 +7,145 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const GAZETTE_PROMPT = `Extract liquidation notices from this Cayman Islands Gazette PDF.
+const GAZETTE_PROMPT = `You are a specialized legal document extraction system for Cayman Islands Gazettes and Extraordinary Gazettes. Your task is to extract ALL liquidation-related information from the COMMERCIAL section, covering voluntary liquidations, court-ordered liquidations, partnerships, and final meetings, then output structured JSON data.
 
-**CRITICAL: ONLY extract notices from the "Voluntary Liquidator and Creditor Notices" section. Ignore all other sections.**
+SCOPE OF EXTRACTION
+Extract from these COMMERCIAL subsections ONLY:
 
-For EACH company liquidation notice in that section, extract:
+✅ Section 1: "Liquidation Notices, Notices of Winding Up, Appointment of Voluntary Liquidators and Notices to Creditors"
+✅ Section 2: "Notices of Final Meeting of Shareholders"
+✅ Section 3: "Partnership Notices"
+✅ Section 4: "Grand Court Notices" (ONLY liquidation-related notices)
 
-1. **Company Name** - Full company name (include any "Ltd.", "Limited", or other suffixes)
-2. **Appointment Type** - The type of liquidation/appointment:
-   - "Voluntary Liquidation" (most common)
-   - "Official Liquidation"
-   - "Receivership"
-   - "Administration"
-   - Or other specific type mentioned
-3. **Appointment Date** - The date the liquidator was appointed (format: YYYY-MM-DD)
-4. **Liquidator/Receiver Name** - Full name of the appointed liquidator or receiver
-5. **Contact Details** - Phone, email, and/or address of the liquidator/receiver
+❌ DO NOT extract from: Bankruptcy Notices, Receivership Notices, Dividend Notices, Dormant Accounts, Strike Notices, Reduction of Capital, Merger Notices, Transfer of Companies, Struck-off Lists, Demand Notices, Regulatory Agency Notices, or Government sections
 
-**OUTPUT FORMAT:**
+STEP 1: DOCUMENT VALIDATION
+Before extraction, perform these validation checks:
 
-Return a JSON array where each element represents one company notice:
+- Identify the gazette type: Gazette or Extraordinary Gazette
+- Extract gazette metadata: Issue number (e.g., "22/2025", "Ex84/2025"), Publication date (e.g., "Monday, 27 October 2025")
+- Locate the CONTENTS page (if present) and identify page numbers for each target section
+- Validate each target section: If section exists → Proceed to extract; If section shows "None" or absent → Skip that section
+- Special validation for Grand Court Notices: Extract ONLY notices containing terms like "liquidation", "winding up", "liquidator appointed", "cause no.", or "FSD"
 
-\`\`\`json
-[
-  {
-    "company_name": "Example Company Ltd.",
-    "appointment_type": "Voluntary Liquidation",
-    "appointment_date": "2024-12-15",
-    "liquidator_name": "John Smith",
-    "liquidator_contact": "Phone: +1-345-123-4567, Email: jsmith@firm.com, Address: 123 Main St, George Town, Grand Cayman",
-    "raw_notice_text": "Original notice text from the PDF...",
-    "confidence": "high"
-  }
-]
-\`\`\`
+STEP 2: SECTION BOUNDARY IDENTIFICATION
+For EACH target section that exists, identify clear start and end boundaries by section headings.
 
-**REQUIREMENTS:**
-- ONLY include notices from "Voluntary Liquidator and Creditor Notices" section
-- Extract ALL companies in that section - do not skip any
-- If appointment date is not explicitly stated, try to infer from context or use null
-- Combine all contact information (phone, email, address) into the liquidator_contact field
-- Include the full original notice text in raw_notice_text for reference
-- Set confidence to "high", "medium", or "low" based on clarity of information
-- If any field cannot be determined, use null but still include the notice
-- Preserve exact company names including punctuation and suffixes
+STEP 3: EXTRACTION RULES BY SECTION
 
-**WHAT TO EXCLUDE:**
-- Notices from other sections (struck off companies, dissolutions, etc.)
-- Administrative notices
-- Court orders unrelated to liquidation
-- Any notice not in the "Voluntary Liquidator and Creditor Notices" section`;
+A. VOLUNTARY LIQUIDATION NOTICES (Section 1)
+Identify liquidation type:
+- "Voluntary": Look for "voluntary liquidation", "voluntary winding up", "Voluntary Liquidator appointed"
+- "Court-Ordered": Look for "Official Liquidator", "Official Liquidation", "FSD Cause No.", court references
+
+For EACH notice, extract:
+- entityName: Full legal name exactly as written
+- entityType: "Company" (default for this section)
+- registrationNo: Include prefixes (CR-, IC-, MC-, etc.); use null if not stated
+- liquidationType: "Voluntary" OR "Court-Ordered"
+- liquidators: Array of full name(s) of individuals or firm names
+- contactEmails: Array of email addresses; empty array if not provided
+- courtCauseNo: Only if mentioned (e.g., "FSD 123 of 2025"); use null if not applicable
+- liquidationDate: Date liquidation commenced in ISO format YYYY-MM-DD
+- finalMeetingDate: Initially null (will populate in Step 4 cross-reference)
+- notes: String with additional context
+
+B. FINAL MEETING NOTICES (Section 2)
+For EACH notice, extract: Company/Partnership name, Registration number (if stated), Final meeting date, Final meeting location/time (for Notes field). DO NOT create separate JSON entries yet - these will be cross-referenced in Step 4.
+
+C. PARTNERSHIP NOTICES (Section 3)
+FILTER FIRST: Only extract partnerships with liquidation language ("voluntary liquidation", "winding up", "liquidator", "dissolution"). IGNORE: Partnership formations, amendments, general notices.
+
+For EACH liquidation notice, extract:
+- entityName, entityType: "Partnership"
+- registrationNo, liquidationType: "Voluntary"
+- liquidators: Array with General Partner or named liquidator(s)
+- contactEmails, courtCauseNo: null
+- liquidationDate, finalMeetingDate: Initially null
+- notes: Include partnership type, General Partner details
+
+D. GRAND COURT NOTICES (Section 4)
+FILTER FIRST: Only extract liquidation-related notices (must contain: "liquidation", "winding up", "liquidator", "FSD", "Cause No."). IGNORE: Other court proceedings.
+
+For EACH liquidation notice, extract:
+- entityName, entityType: "Company" (or "Partnership" if stated)
+- registrationNo: Use null if not stated
+- liquidationType: "Court-Ordered"
+- liquidators: Array with Official Liquidator name(s)
+- contactEmails, courtCauseNo: Extract cause number
+- liquidationDate: Order date or petition date in ISO format
+- finalMeetingDate: Initially null
+- notes: Include petitioner, grounds for winding up
+
+STEP 4: CROSS-REFERENCING FINAL MEETINGS
+After extracting all liquidations (Sections 1, 3, 4):
+- Compare Final Meeting Notices (Section 2) against all extracted entities
+- Match by: Exact entity name match (case-insensitive), OR Registration number match, OR Close name match
+- If match found: Populate finalMeetingDate field and update notes field
+- If no match found (entity in Final Meeting section but NOT in liquidation sections): Create NEW entry with entityType determined from name/context, liquidationType: "Unknown", liquidationDate: null, notes: "Final meeting notice only; liquidation commenced in prior gazette"
+
+STEP 5: INTERNAL VALIDATION & SELF-CORRECTION
+Before outputting, verify:
+1. Section Isolation: Confirm EVERY extracted entity came from correct target sections
+2. Liquidation Type Accuracy: "Voluntary" vs "Court-Ordered" vs "Unknown"
+3. Entity Type Accuracy: "Company" vs "Partnership"
+4. Name Accuracy: Complete name, exact capitalization, punctuation
+5. Date Format & Logic: ISO format YYYY-MM-DD, liquidation date ≤ gazette publication date
+6. Array Fields: liquidators always array (never empty), contactEmails always array (can be empty)
+7. Cross-Reference Verification: Check name variations, verify registration numbers match
+8. Duplicate Check: Same entity should NOT appear twice UNLESS different segregated portfolios
+9. Null vs Empty: Use null for registrationNo, courtCauseNo, liquidationDate, finalMeetingDate when not applicable; Use empty array [] for contactEmails when no emails; NEVER use null for liquidators array
+
+STEP 6: JSON OUTPUT FORMAT
+
+If ANY liquidations found:
+{
+  "status": "success",
+  "gazette": {
+    "type": "Gazette",
+    "issueNumber": "22/2025",
+    "publicationDate": "2025-10-27"
+  },
+  "summary": {
+    "totalEntities": 37,
+    "companiesVoluntary": 33,
+    "companiesCourtOrdered": 2,
+    "partnershipsVoluntary": 2,
+    "entitiesWithFinalMeetings": 5
+  },
+  "liquidations": [
+    {
+      "entityName": "AGIC BLUE RIDGE (CAYMAN) LIMITED",
+      "entityType": "Company",
+      "registrationNo": "IC-323061",
+      "liquidationType": "Voluntary",
+      "liquidators": ["Shu Xu"],
+      "contactEmails": ["shu.xu@agic-group.com"],
+      "courtCauseNo": null,
+      "liquidationDate": "2025-10-17",
+      "finalMeetingDate": null,
+      "notes": "Voluntary liquidation from 17 October 2025"
+    }
+  ]
+}
+
+Array Sorting: Primary: entityType (Company first, then Partnership); Secondary: liquidationType (Voluntary, Court-Ordered, Unknown); Tertiary: entityName (alphabetical, case-insensitive)
+
+If NO liquidations found:
+{
+  "status": "no_data",
+  "gazette": {...},
+  "summary": {...all zeros...},
+  "message": "This gazette does not contain any liquidation notices for companies or partnerships in the covered period.",
+  "sectionsReviewed": {...},
+  "liquidations": []
+}
+
+STEP 7: FINAL QUALITY CHECKS
+Verify: Valid JSON, all four sections reviewed, correct liquidationType/entityType, final meetings cross-referenced, courtCauseNo captured, no excluded sections, complete entity names, ISO dates, liquidators array has entries, contactEmails is array, no hallucinated info, summary stats match array counts, array properly sorted.
+
+OUTPUT INSTRUCTIONS
+Output ONLY valid JSON (no explanations, no markdown code blocks, no preamble). Do not show thinking. Ensure proper escaping of special characters. Use consistent indentation (2 spaces).`;
 
 interface AnalysisRequest {
   pdf_base64: string;
@@ -65,14 +154,35 @@ interface AnalysisRequest {
   issue_date?: string;
 }
 
+interface GazetteResponse {
+  status: string;
+  gazette: {
+    type: string;
+    issueNumber: string;
+    publicationDate: string;
+  };
+  summary: {
+    totalEntities: number;
+    companiesVoluntary: number;
+    companiesCourtOrdered: number;
+    partnershipsVoluntary: number;
+    entitiesWithFinalMeetings: number;
+  };
+  message?: string;
+  liquidations: LiquidationNotice[];
+}
+
 interface LiquidationNotice {
-  company_name: string;
-  appointment_type: string;
-  appointment_date: string | null;
-  liquidator_name: string | null;
-  liquidator_contact: string | null;
-  raw_notice_text: string;
-  confidence: string;
+  entityName: string;
+  entityType: string;
+  registrationNo: string | null;
+  liquidationType: string;
+  liquidators: string[];
+  contactEmails: string[];
+  courtCauseNo: string | null;
+  liquidationDate: string | null;
+  finalMeetingDate: string | null;
+  notes: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -155,18 +265,31 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Analysis complete. Tokens used: ${tokensUsed.total_tokens}`);
 
-    let notices: LiquidationNotice[] = [];
+    let gazetteResponse: GazetteResponse;
     try {
       const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
-        notices = JSON.parse(jsonMatch[1]);
+        gazetteResponse = JSON.parse(jsonMatch[1]);
       } else {
-        notices = JSON.parse(analysisText);
+        gazetteResponse = JSON.parse(analysisText);
       }
     } catch (parseError) {
-      console.error("Failed to parse notices JSON:", parseError);
+      console.error("Failed to parse gazette response JSON:", parseError);
       console.log("Raw response:", analysisText);
+      throw new Error("Failed to parse Claude response as JSON");
     }
+
+    const notices = gazetteResponse.liquidations || [];
+    const summaryStats = gazetteResponse.summary || {
+      totalEntities: notices.length,
+      companiesVoluntary: 0,
+      companiesCourtOrdered: 0,
+      partnershipsVoluntary: 0,
+      entitiesWithFinalMeetings: 0,
+    };
+
+    console.log(`Extracted ${notices.length} liquidation notices`);
+    console.log(`Summary: ${summaryStats.totalEntities} total, ${summaryStats.companiesVoluntary} voluntary companies, ${summaryStats.companiesCourtOrdered} court-ordered companies, ${summaryStats.partnershipsVoluntary} partnerships`);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -176,12 +299,17 @@ Deno.serve(async (req: Request) => {
       .from("analyzed_gazette_pdfs")
       .insert({
         gazette_type,
-        issue_number: issue_number || null,
-        issue_date: issue_date || null,
+        issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
+        issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
         pdf_bytes: pdfBytes,
         full_analysis: analysisText,
         notices_count: notices.length,
-        extraction_metadata: { claude_model: "claude-sonnet-4-20250514" },
+        summary_stats: summaryStats,
+        extraction_metadata: {
+          claude_model: "claude-sonnet-4-20250514",
+          gazette_type: gazetteResponse.gazette?.type || gazette_type,
+          status: gazetteResponse.status,
+        },
         llm_tokens_used: tokensUsed,
         uploaded_by: "user",
       })
@@ -196,13 +324,22 @@ Deno.serve(async (req: Request) => {
     if (notices.length > 0) {
       const noticeRecords = notices.map((notice) => ({
         analyzed_gazette_id: gazetteRecord.id,
-        company_name: notice.company_name,
-        appointment_type: notice.appointment_type,
-        appointment_date: notice.appointment_date,
-        liquidator_name: notice.liquidator_name,
-        liquidator_contact: notice.liquidator_contact,
-        raw_notice_text: notice.raw_notice_text,
-        extraction_confidence: notice.confidence || "medium",
+        company_name: notice.entityName,
+        entity_type: notice.entityType,
+        registration_no: notice.registrationNo,
+        liquidation_type: notice.liquidationType,
+        liquidators: notice.liquidators,
+        contact_emails: notice.contactEmails,
+        court_cause_no: notice.courtCauseNo,
+        liquidation_date: notice.liquidationDate,
+        final_meeting_date: notice.finalMeetingDate,
+        notes: notice.notes,
+        appointment_type: notice.liquidationType,
+        appointment_date: notice.liquidationDate,
+        liquidator_name: notice.liquidators?.length > 0 ? notice.liquidators[0] : null,
+        liquidator_contact: notice.contactEmails?.length > 0 ? notice.contactEmails.join(", ") : null,
+        raw_notice_text: notice.notes,
+        extraction_confidence: "high",
       }));
 
       const { error: noticesError } = await supabase
@@ -220,6 +357,8 @@ Deno.serve(async (req: Request) => {
         success: true,
         gazette_id: gazetteRecord.id,
         notices_count: notices.length,
+        summary: summaryStats,
+        gazette_metadata: gazetteResponse.gazette,
         notices: notices,
         tokens_used: tokensUsed,
       }),

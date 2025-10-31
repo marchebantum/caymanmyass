@@ -438,6 +438,7 @@ export interface Database {
           issue_date: string | null
           full_analysis: string
           notices_count: number
+          summary_stats: Json
           extraction_metadata: Json
           llm_tokens_used: Json
           uploaded_by: string
@@ -451,6 +452,7 @@ export interface Database {
           issue_date?: string | null
           full_analysis: string
           notices_count?: number
+          summary_stats?: Json
           extraction_metadata?: Json
           llm_tokens_used?: Json
           uploaded_by?: string
@@ -464,6 +466,7 @@ export interface Database {
           issue_date?: string | null
           full_analysis?: string
           notices_count?: number
+          summary_stats?: Json
           extraction_metadata?: Json
           llm_tokens_used?: Json
           uploaded_by?: string
@@ -476,6 +479,15 @@ export interface Database {
           id: string
           analyzed_gazette_id: string
           company_name: string
+          entity_type: string
+          registration_no: string | null
+          liquidation_type: string
+          liquidators: Json
+          contact_emails: Json
+          court_cause_no: string | null
+          liquidation_date: string | null
+          final_meeting_date: string | null
+          notes: string | null
           appointment_type: string
           appointment_date: string | null
           liquidator_name: string | null
@@ -489,6 +501,15 @@ export interface Database {
           id?: string
           analyzed_gazette_id: string
           company_name: string
+          entity_type?: string
+          registration_no?: string | null
+          liquidation_type?: string
+          liquidators?: Json
+          contact_emails?: Json
+          court_cause_no?: string | null
+          liquidation_date?: string | null
+          final_meeting_date?: string | null
+          notes?: string | null
           appointment_type: string
           appointment_date?: string | null
           liquidator_name?: string | null
@@ -502,6 +523,15 @@ export interface Database {
           id?: string
           analyzed_gazette_id?: string
           company_name?: string
+          entity_type?: string
+          registration_no?: string | null
+          liquidation_type?: string
+          liquidators?: Json
+          contact_emails?: Json
+          court_cause_no?: string | null
+          liquidation_date?: string | null
+          final_meeting_date?: string | null
+          notes?: string | null
           appointment_type?: string
           appointment_date?: string | null
           liquidator_name?: string | null
