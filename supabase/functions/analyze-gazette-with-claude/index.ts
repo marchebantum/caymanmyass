@@ -190,6 +190,22 @@ function parseClaudeResponse(text: string): GazetteResponse {
 
   const strategies = [
     () => {
+      if (cleanedText.startsWith('{') && cleanedText.endsWith('}')) {
+        return JSON.parse(cleanedText);
+      }
+      return null;
+    },
+    () => {
+      const startIdx = cleanedText.indexOf('{');
+      const endIdx = cleanedText.lastIndexOf('}');
+
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        const jsonStr = cleanedText.substring(startIdx, endIdx + 1);
+        return JSON.parse(jsonStr);
+      }
+      return null;
+    },
+    () => {
       const jsonMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[1].trim());
@@ -204,43 +220,37 @@ function parseClaudeResponse(text: string): GazetteResponse {
       return null;
     },
     () => {
-      if (cleanedText.startsWith('{') && cleanedText.endsWith('}')) {
-        return JSON.parse(cleanedText);
-      }
-      return null;
-    },
-    () => {
       const lines = cleanedText.split('\n');
-      const jsonLines = [];
-      let inJson = false;
+      let braceCount = 0;
+      let startLine = -1;
+      let endLine = -1;
 
-      for (const line of lines) {
-        if (line.trim().startsWith('{')) {
-          inJson = true;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const char of line) {
+          if (char === '{') {
+            if (braceCount === 0) startLine = i;
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              endLine = i;
+              break;
+            }
+          }
         }
-        if (inJson) {
-          jsonLines.push(line);
-        }
-        if (line.trim().endsWith('}') && inJson) {
-          break;
-        }
+        if (endLine !== -1) break;
       }
 
-      if (jsonLines.length > 0) {
-        return JSON.parse(jsonLines.join('\n'));
-      }
-      return null;
-    },
-    () => {
-      const startIdx = cleanedText.indexOf('{');
-      const endIdx = cleanedText.lastIndexOf('}');
-
-      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-        return JSON.parse(cleanedText.substring(startIdx, endIdx + 1));
+      if (startLine !== -1 && endLine !== -1) {
+        const jsonStr = lines.slice(startLine, endLine + 1).join('\n');
+        return JSON.parse(jsonStr);
       }
       return null;
     }
   ];
+
+  let lastError: Error | null = null;
 
   for (let i = 0; i < strategies.length; i++) {
     try {
@@ -250,12 +260,19 @@ function parseClaudeResponse(text: string): GazetteResponse {
         return result as GazetteResponse;
       }
     } catch (error) {
+      lastError = error;
       console.log(`Strategy ${i + 1} failed:`, error.message);
       continue;
     }
   }
 
-  throw new Error("All parsing strategies failed. Response may not contain valid JSON.");
+  console.error("All parsing strategies failed.");
+  console.error("Text length:", cleanedText.length);
+  console.error("First 1000 chars:", cleanedText.substring(0, 1000));
+  console.error("Last 500 chars:", cleanedText.substring(Math.max(0, cleanedText.length - 500)));
+  console.error("Last error:", lastError?.message);
+
+  throw new Error(`All parsing strategies failed. Last error: ${lastError?.message || 'Unknown'}. Text length: ${cleanedText.length}`);
 }
 
 Deno.serve(async (req: Request) => {
@@ -299,7 +316,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4000,
+        max_tokens: 16000,
         messages: [
           {
             role: "user",
@@ -329,6 +346,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = await response.json();
+
+    if (!result.content || !result.content[0] || !result.content[0].text) {
+      console.error("Invalid Claude API response structure:", JSON.stringify(result));
+      throw new Error("Invalid response from Claude API");
+    }
+
     const analysisText = result.content[0].text;
     const tokensUsed = {
       input_tokens: result.usage?.input_tokens || 0,
@@ -336,8 +359,15 @@ Deno.serve(async (req: Request) => {
       total_tokens: (result.usage?.input_tokens || 0) + (result.usage?.output_tokens || 0),
     };
 
-    console.log(`Analysis complete. Tokens used: ${tokensUsed.total_tokens}`);
+    console.log(`Analysis complete. Tokens used: ${tokensUsed.total_tokens} (output: ${tokensUsed.output_tokens})`);
+    console.log(`Response length: ${analysisText.length} characters`);
     console.log("Raw Claude response (first 500 chars):", analysisText.substring(0, 500));
+    console.log("Raw Claude response (last 200 chars):", analysisText.substring(Math.max(0, analysisText.length - 200)));
+
+    if (result.stop_reason === 'max_tokens') {
+      console.warn("WARNING: Response was truncated due to max_tokens limit!");
+      throw new Error("The gazette contains too many liquidation notices. Claude's response was truncated. Please try processing a smaller gazette or contact support.");
+    }
 
     let gazetteResponse: GazetteResponse;
     try {

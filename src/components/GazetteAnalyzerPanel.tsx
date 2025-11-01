@@ -128,8 +128,11 @@ export function GazetteAnalyzerPanel() {
 
       if (!result.success) {
         const errorMsg = result.error || 'Analysis failed';
+        if (errorMsg.includes('truncated') || errorMsg.includes('too many')) {
+          throw new Error('This gazette contains too many notices to process in one request. The AI response was cut off. Please contact support for assistance with large gazettes.');
+        }
         if (errorMsg.includes('parse') || errorMsg.includes('JSON')) {
-          throw new Error('Failed to process gazette response. This may be due to an unexpected format in the gazette PDF. Please try again or contact support if the issue persists.');
+          throw new Error('Failed to process gazette response. The AI may have returned incomplete data. Please try uploading the gazette again. If this persists, the gazette may be too large.');
         }
         throw new Error(errorMsg);
       }
