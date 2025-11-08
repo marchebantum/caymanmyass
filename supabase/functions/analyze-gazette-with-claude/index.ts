@@ -355,9 +355,6 @@ function parseClaudeResponse(text: string): GazetteResponse {
   throw new Error(`All parsing strategies failed. Last error: ${lastError?.message || 'Unknown'}. Text length: ${cleanedText.length}`);
 }
 
-/**
- * Extract text from PDF using Claude's document understanding
- */
 async function extractPdfText(
   pdf_base64: string,
   anthropicApiKey: string
@@ -410,9 +407,6 @@ async function extractPdfText(
   return extractedText;
 }
 
-/**
- * Process a single section or full PDF with Claude
- */
 async function analyzeWithClaude(
   content: string,
   prompt: string,
@@ -484,9 +478,6 @@ async function analyzeWithClaude(
   };
 }
 
-/**
- * Process sections in batches and merge results
- */
 async function processSectionBatches(
   subsections: SectionInfo[],
   anthropicApiKey: string,
@@ -506,12 +497,10 @@ async function processSectionBatches(
     const batchSectionNames = batch.map(s => s.sectionName.slice(0, 30) + '...').join(', ');
     console.log(`Processing batch ${i + 1}/${batches.length}: ${batchSectionNames}`);
     
-    // Combine sections in this batch
     const batchContent = batch.map(s => s.content).join('\n\n');
     const batchTokens = estimateTokens(batchContent);
     const maxTokens = calculateMaxTokens(batchTokens);
     
-    // Create a focused prompt for this batch
     const batchPrompt = GAZETTE_PROMPT.replace(
       /Extract from these COMMERCIAL subsections ONLY.*?(?=STEP 1)/s,
       `Extract from the following COMMERCIAL subsections in this batch:\n${batch.map((s, idx) => `✅ Section ${idx + 1}: "${s.sectionName}"`).join('\n')}\n\n`
@@ -532,31 +521,25 @@ async function processSectionBatches(
         console.warn(`Batch ${i + 1} hit max_tokens limit - response may be truncated`);
       }
       
-      // Parse the batch response
       const batchResponse = parseClaudeResponse(text);
       
-      // Extract gazette metadata from first batch
       if (i === 0 && batchResponse.gazette) {
         gazetteMetadata = batchResponse.gazette;
       }
       
-      // Collect liquidations
       if (batchResponse.liquidations && Array.isArray(batchResponse.liquidations)) {
         allLiquidations.push(...batchResponse.liquidations);
         console.log(`Batch ${i + 1} extracted ${batchResponse.liquidations.length} notices`);
       }
       
-      // Small delay between batches to avoid rate limiting
       if (i < batches.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (error) {
       console.error(`Error processing batch ${i + 1}:`, error);
-      // Continue with other batches even if one fails
     }
   }
   
-  // Calculate summary statistics
   const summary = {
     totalEntities: allLiquidations.length,
     companiesVoluntary: allLiquidations.filter(l => l.entityType === 'Company' && l.liquidationType === 'Voluntary').length,
@@ -613,7 +596,6 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Analyzing ${gazette_type} gazette PDF with Claude...`);
 
-    // Estimate PDF size - rough heuristic: base64 is ~1.33x original, avg PDF has ~2-3 chars per token
     const estimatedPdfTokens = Math.ceil((pdf_base64.length / 1.33) / 2.5);
     const promptTokens = estimateTokens(GAZETTE_PROMPT);
     const totalEstimatedInputTokens = estimatedPdfTokens + promptTokens;
@@ -624,23 +606,18 @@ Deno.serve(async (req: Request) => {
     let tokensUsed: any;
     let processingMode: 'single-pass' | 'batch' = 'single-pass';
     
-    // Decision: Use batch processing if estimated input exceeds 180k tokens
     if (totalEstimatedInputTokens > 180000) {
       console.log("⚠️  Estimated tokens exceed 180k - switching to BATCH PROCESSING mode");
       processingMode = 'batch';
       
       try {
-        // Step 1: Extract PDF text
         const pdfText = await extractPdfText(pdf_base64, anthropicApiKey);
-        
-        // Step 2: Analyze COMMERCIAL section structure
         const analysis = analyzeCommercialSection(pdfText, 180000);
         
         if (analysis.subsections.length === 0) {
           throw new Error("Could not identify any target subsections in the COMMERCIAL section. The gazette may not contain the expected sections.");
         }
         
-        // Step 3: Process subsections in batches
         const { mergedResponse, totalTokens } = await processSectionBatches(
           analysis.subsections,
           anthropicApiKey,
@@ -649,7 +626,7 @@ Deno.serve(async (req: Request) => {
         
         gazetteResponse = mergedResponse;
         tokensUsed = {
-          input_tokens: 0, // Distributed across batches
+          input_tokens: 0,
           output_tokens: 0,
           total_tokens: totalTokens,
         };
@@ -663,7 +640,6 @@ Deno.serve(async (req: Request) => {
       console.log("✅ Estimated tokens within limits - using SINGLE-PASS mode");
       processingMode = 'single-pass';
       
-      // Calculate dynamic max_tokens
       const maxTokens = calculateMaxTokens(totalEstimatedInputTokens);
       
       const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -702,7 +678,6 @@ Deno.serve(async (req: Request) => {
         const error = await response.text();
         console.error("Claude API error:", error);
         
-        // Check if it's a context window error
         if (error.includes('context') || error.includes('token')) {
           throw new Error("The PDF is too large for single-pass processing. Please try again - the system will use batch processing mode.");
         }
@@ -784,7 +759,6 @@ Deno.serve(async (req: Request) => {
     console.log(`Extracted ${notices.length} liquidation notices using ${processingMode} mode`);
     console.log(`Summary: ${summaryStats.totalEntities} total, ${summaryStats.companiesVoluntary} voluntary companies, ${summaryStats.companiesCourtOrdered} court-ordered companies, ${summaryStats.partnershipsVoluntary} partnerships`);
 
-    // DIAGNOSTIC: Log if no notices were found
     if (notices.length === 0) {
       console.warn("⚠️  NO LIQUIDATION NOTICES FOUND");
       console.warn("Response status:", gazetteResponse.status);
@@ -796,14 +770,10 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const pdfBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
-
-    // Try to insert with summary_stats if column exists, otherwise without
     const insertData: any = {
       gazette_type,
       issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
       issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
-      pdf_bytes: pdfBytes,
       full_analysis: JSON.stringify({
         status: gazetteResponse.status,
         summary: summaryStats,
@@ -811,17 +781,24 @@ Deno.serve(async (req: Request) => {
         processing_mode: processingMode,
       }),
       notices_count: notices.length,
+      summary_stats: summaryStats,
       extraction_metadata: {
         claude_model: "claude-sonnet-4-20250514",
         gazette_type: gazetteResponse.gazette?.type || gazette_type,
         status: gazetteResponse.status,
         processing_mode: processingMode,
         estimated_input_tokens: totalEstimatedInputTokens,
-        summary_stats: summaryStats, // Store in metadata as backup
+        summary_stats: summaryStats,
       },
       llm_tokens_used: tokensUsed,
       uploaded_by: "user",
     };
+
+    console.log("Attempting to insert gazette record...");
+    console.log("Insert data keys:", Object.keys(insertData));
+    console.log("Gazette type:", insertData.gazette_type);
+    console.log("Issue number:", insertData.issue_number);
+    console.log("Notices count:", insertData.notices_count);
 
     const { data: gazetteRecord, error: gazetteError } = await supabase
       .from("analyzed_gazette_pdfs")
@@ -830,9 +807,15 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (gazetteError) {
-      console.error("Error saving gazette:", gazetteError);
-      throw new Error("Failed to save gazette analysis");
+      console.error("Error saving gazette to database:");
+      console.error("Error code:", gazetteError.code);
+      console.error("Error message:", gazetteError.message);
+      console.error("Error details:", JSON.stringify(gazetteError.details));
+      console.error("Error hint:", gazetteError.hint);
+      throw new Error(`Failed to save gazette analysis: ${gazetteError.message}`);
     }
+
+    console.log("✅ Successfully saved gazette record with ID:", gazetteRecord.id);
 
     if (notices.length > 0) {
       const noticeRecords = notices.map((notice) => ({
@@ -860,9 +843,15 @@ Deno.serve(async (req: Request) => {
         .insert(noticeRecords);
 
       if (noticesError) {
-        console.error("Error saving notices:", noticesError);
-        throw new Error("Failed to save liquidation notices");
+        console.error("Error saving notices to database:");
+        console.error("Error code:", noticesError.code);
+        console.error("Error message:", noticesError.message);
+        console.error("Error details:", JSON.stringify(noticesError.details));
+        console.error("Notice records count:", noticeRecords.length);
+        throw new Error(`Failed to save liquidation notices: ${noticesError.message}`);
       }
+
+      console.log(`✅ Successfully saved ${notices.length} liquidation notices`);
     }
 
     return new Response(
