@@ -171,6 +171,79 @@ function findNextStopIndex(text: string, startFrom: number): number | null {
   return stopIndex;
 }
 
+function isLikelyContentsBlock(text: string, index: number): boolean {
+  const windowBefore = text.slice(Math.max(0, index - 200), index + 20);
+  const windowAfter = text.slice(index, index + 250);
+  if (/CONTENTS/i.test(windowBefore)) {
+    return true;
+  }
+  if (/Pg\./i.test(windowAfter)) {
+    return true;
+  }
+  if (/\.{3,}/.test(windowAfter)) {
+    return true;
+  }
+  if (/\bNone\b/i.test(windowAfter)) {
+    return true;
+  }
+  return false;
+}
+
+function findCommercialStart(text: string): number {
+  const regex = /\bCOMMERCIAL\b/gi;
+  let match: RegExpExecArray | null;
+  let fallbackIndex: number | null = null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index === undefined) continue;
+    if (fallbackIndex === null) {
+      fallbackIndex = match.index;
+    }
+    if (!isLikelyContentsBlock(text, match.index)) {
+      return match.index;
+    }
+  }
+
+  return fallbackIndex ?? 0;
+}
+
+/**
+ * Extract the COMMERCIAL section from the full PDF text
+ * Stops after "Grand Court Notices" or when hitting excluded sections/GOVERNMENT
+ */
+export function extractCommercialSection(pdfText: string): string {
+  const commercialStart = findCommercialStart(pdfText);
+
+  if (commercialStart === 0 && !/\bCOMMERCIAL\b/i.test(pdfText)) {
+    console.warn("COMMERCIAL section not found in PDF");
+    return pdfText;
+  }
+
+  const governmentRegex = /\bGOVERNMENT\b/i;
+
+  // Find where to stop extraction
+  let commercialEnd = pdfText.length;
+
+  // Check for GOVERNMENT section
+  const governmentMatch = pdfText.slice(commercialStart).match(governmentRegex);
+  if (governmentMatch && governmentMatch.index !== undefined) {
+    commercialEnd = Math.min(commercialEnd, commercialStart + governmentMatch.index);
+  }
+
+  // Check for stop-after subsections
+  for (const stopSection of STOP_AFTER_SUBSECTIONS) {
+    const stopRegex = new RegExp(`\\b${escapeRegExp(stopSection)}\\b`, 'i');
+    const stopMatch = pdfText.slice(commercialStart).match(stopRegex);
+    if (stopMatch && stopMatch.index !== undefined) {
+      commercialEnd = Math.min(commercialEnd, commercialStart + stopMatch.index);
+    }
+  }
+
+  const sectionText = pdfText.slice(commercialStart, commercialEnd);
+  console.log(`Extracted COMMERCIAL section approx length: ${sectionText.length}`);
+  return sectionText;
+}
+
 /**
  * Identify subsection boundaries within the COMMERCIAL section
  */
@@ -187,6 +260,19 @@ export function identifySubsections(commercialText: string): SectionInfo[] {
 
     matches.push({ name: target.name, startIndex });
     searchFrom = startIndex + 1;
+  }
+
+  if (matches.length === 0) {
+    console.warn("No subsection headings detected within COMMERCIAL section. Will treat entire section as single batch.");
+    return [
+      {
+        sectionName: "Commercial Section",
+        startIndex: 0,
+        endIndex: commercialText.length,
+        content: commercialText,
+        estimatedTokens: estimateTokens(commercialText),
+      },
+    ];
   }
 
   matches.sort((a, b) => a.startIndex - b.startIndex);
@@ -219,43 +305,6 @@ export function identifySubsections(commercialText: string): SectionInfo[] {
   }
 
   return subsections;
-}
-
-/**
- * Extract the COMMERCIAL section from the full PDF text
- * Stops after "Grand Court Notices" or when hitting excluded sections/GOVERNMENT
- */
-export function extractCommercialSection(pdfText: string): string {
-  const commercialRegex = /\bCOMMERCIAL\b/i;
-  const governmentRegex = /\bGOVERNMENT\b/i;
-  
-  const commercialMatch = pdfText.match(commercialRegex);
-  if (!commercialMatch || commercialMatch.index === undefined) {
-    console.warn("COMMERCIAL section not found in PDF");
-    return pdfText; // Return full text if COMMERCIAL section not found
-  }
-
-  const commercialStart = commercialMatch.index;
-  
-  // Find where to stop extraction
-  let commercialEnd = pdfText.length;
-  
-  // Check for GOVERNMENT section
-  const governmentMatch = pdfText.slice(commercialStart).match(governmentRegex);
-  if (governmentMatch && governmentMatch.index !== undefined) {
-    commercialEnd = Math.min(commercialEnd, commercialStart + governmentMatch.index);
-  }
-  
-  // Check for stop-after subsections
-  for (const stopSection of STOP_AFTER_SUBSECTIONS) {
-    const stopRegex = new RegExp(`\\b${escapeRegExp(stopSection)}\\b`, 'i');
-    const stopMatch = pdfText.slice(commercialStart).match(stopRegex);
-    if (stopMatch && stopMatch.index !== undefined) {
-      commercialEnd = Math.min(commercialEnd, commercialStart + stopMatch.index);
-    }
-  }
-  
-  return pdfText.slice(commercialStart, commercialEnd);
 }
 
 /**
