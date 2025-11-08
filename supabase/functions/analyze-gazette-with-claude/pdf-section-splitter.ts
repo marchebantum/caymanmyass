@@ -31,21 +31,66 @@ export function estimateTokens(text: string): number {
 }
 
 /**
- * Target subsection names in the order they appear in gazettes
+ * Target subsections and their heading patterns
  */
-const TARGET_SUBSECTIONS = [
-  "Liquidation Notices, Notices of Winding Up, Appointment of Voluntary Liquidators and Notices to Creditors",
-  "Notices of Final Meeting of Shareholders",
-  "Partnership Notices",
-  "Bankruptcy Notices",
-  "Receivership Notices",
-  "Dividend Notices",
-  "Grand Court Notices",
+interface TargetSubsection {
+  name: string;
+  patterns: string[];
+}
+
+const TARGET_SUBSECTIONS: TargetSubsection[] = [
+  {
+    name: "Liquidation Notices, Notices of Winding Up, Appointment of Voluntary Liquidators and Notices to Creditors",
+    patterns: [
+      "\\bLiquidation Notices\\b",
+      "\\bNotices of Winding Up\\b",
+      "\\bVoluntary Liquidator\\b",
+    ],
+  },
+  {
+    name: "Notices of Final Meeting of Shareholders",
+    patterns: [
+      "\\bNotices? of Final Meeting\\b",
+      "\\bFinal Meeting of Shareholders\\b",
+    ],
+  },
+  {
+    name: "Partnership Notices",
+    patterns: [
+      "\\bPartnership Notices\\b",
+      "\\bLimited Partnership Notices\\b",
+    ],
+  },
+  {
+    name: "Bankruptcy Notices",
+    patterns: [
+      "\\bBankruptcy Notices\\b",
+      "\\bBankruptcy Order\\b",
+    ],
+  },
+  {
+    name: "Receivership Notices",
+    patterns: [
+      "\\bReceivership Notices\\b",
+      "\\bNotice of Receiver\\b",
+    ],
+  },
+  {
+    name: "Dividend Notices",
+    patterns: [
+      "\\bDividend Notices?\\b",
+      "\\bLiquidation Dividend\\b",
+    ],
+  },
+  {
+    name: "Grand Court Notices",
+    patterns: [
+      "\\bGrand Court Notices\\b",
+      "\\bIn the Grand Court\\b",
+    ],
+  },
 ];
 
-/**
- * Subsections that mark the end of our extraction scope
- */
 const STOP_AFTER_SUBSECTIONS = [
   "Dormant Accounts Notices",
   "Notice of Special Strike",
@@ -57,6 +102,124 @@ const STOP_AFTER_SUBSECTIONS = [
   "Regulatory Agency Notices",
   "General Commercial Notices",
 ];
+
+const STOP_SECTION_DEFS: TargetSubsection[] = STOP_AFTER_SUBSECTIONS.map((name) => ({
+  name,
+  patterns: [`\\b${escapeRegExp(name)}\\b`],
+}));
+
+function isLikelyContentsEntry(text: string, index: number): boolean {
+  const windowAfter = text.slice(index, index + 200);
+  const windowBefore = text.slice(Math.max(0, index - 120), index);
+  if (/CONTENTS/i.test(windowBefore)) {
+    return true;
+  }
+  if (/Pg\./i.test(windowAfter)) {
+    return true;
+  }
+  if (/\.{3,}/.test(windowAfter)) {
+    return true;
+  }
+  if (/\bNone\b/i.test(windowAfter)) {
+    return true;
+  }
+  return false;
+}
+
+function isHeadingStart(text: string, index: number): boolean {
+  if (index <= 0) return true;
+  const before = text.slice(Math.max(0, index - 6), index);
+  return /\n\s*$/.test(before);
+}
+
+function findHeadingIndex(
+  text: string,
+  target: TargetSubsection,
+  startFrom = 0
+): number | null {
+  for (const pattern of target.patterns) {
+    const regex = new RegExp(pattern, "gi");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      const idx = match.index;
+      if (idx < startFrom) {
+        continue;
+      }
+      if (!isHeadingStart(text, idx)) {
+        continue;
+      }
+      if (isLikelyContentsEntry(text, idx)) {
+        continue;
+      }
+      return idx;
+    }
+  }
+
+  return null;
+}
+
+function findNextStopIndex(text: string, startFrom: number): number | null {
+  let stopIndex: number | null = null;
+
+  for (const stop of STOP_SECTION_DEFS) {
+    const idx = findHeadingIndex(text, stop, startFrom);
+    if (idx !== null) {
+      stopIndex = stopIndex === null ? idx : Math.min(stopIndex, idx);
+    }
+  }
+
+  return stopIndex;
+}
+
+/**
+ * Identify subsection boundaries within the COMMERCIAL section
+ */
+export function identifySubsections(commercialText: string): SectionInfo[] {
+  const matches: { name: string; startIndex: number }[] = [];
+  let searchFrom = 0;
+
+  for (const target of TARGET_SUBSECTIONS) {
+    const startIndex = findHeadingIndex(commercialText, target, searchFrom);
+    if (startIndex === null) {
+      console.log(`Subsection not found: ${target.name}`);
+      continue;
+    }
+
+    matches.push({ name: target.name, startIndex });
+    searchFrom = startIndex + 1;
+  }
+
+  matches.sort((a, b) => a.startIndex - b.startIndex);
+
+  const subsections: SectionInfo[] = [];
+
+  for (let i = 0; i < matches.length; i++) {
+    const { name, startIndex } = matches[i];
+    let endIndex = commercialText.length;
+
+    if (i + 1 < matches.length) {
+      endIndex = Math.min(endIndex, matches[i + 1].startIndex);
+    }
+
+    const stopIndex = findNextStopIndex(commercialText, startIndex + 1);
+    if (stopIndex !== null) {
+      endIndex = Math.min(endIndex, stopIndex);
+    }
+
+    const content = commercialText.slice(startIndex, endIndex);
+    const estimatedTokens = estimateTokens(content);
+
+    subsections.push({
+      sectionName: name,
+      startIndex,
+      endIndex,
+      content,
+      estimatedTokens,
+    });
+  }
+
+  return subsections;
+}
 
 /**
  * Extract the COMMERCIAL section from the full PDF text
@@ -93,73 +256,6 @@ export function extractCommercialSection(pdfText: string): string {
   }
   
   return pdfText.slice(commercialStart, commercialEnd);
-}
-
-/**
- * Identify subsection boundaries within the COMMERCIAL section
- */
-export function identifySubsections(commercialText: string): SectionInfo[] {
-  const subsections: SectionInfo[] = [];
-  
-  for (let i = 0; i < TARGET_SUBSECTIONS.length; i++) {
-    const sectionName = TARGET_SUBSECTIONS[i];
-    
-    // Create flexible regex to match section headings (case-insensitive, allows slight variations)
-    const sectionRegex = new RegExp(
-      `\\b${escapeRegExp(sectionName)}\\b`,
-      'i'
-    );
-    
-    const match = commercialText.match(sectionRegex);
-    if (!match || match.index === undefined) {
-      console.log(`Subsection not found: ${sectionName}`);
-      continue;
-    }
-    
-    const startIndex = match.index;
-    
-    // Find end index (start of next section or end of text)
-    let endIndex = commercialText.length;
-    
-    // Look for the next target subsection
-    for (let j = i + 1; j < TARGET_SUBSECTIONS.length; j++) {
-      const nextSectionRegex = new RegExp(
-        `\\b${escapeRegExp(TARGET_SUBSECTIONS[j])}\\b`,
-        'i'
-      );
-      const nextMatch = commercialText.slice(startIndex + 1).match(nextSectionRegex);
-      if (nextMatch && nextMatch.index !== undefined) {
-        endIndex = startIndex + 1 + nextMatch.index;
-        break;
-      }
-    }
-    
-    // Also check for stop-after subsections
-    for (const stopSection of STOP_AFTER_SUBSECTIONS) {
-      const stopRegex = new RegExp(`\\b${escapeRegExp(stopSection)}\\b`, 'i');
-      const stopMatch = commercialText.slice(startIndex + 1).match(stopRegex);
-      if (stopMatch && stopMatch.index !== undefined) {
-        const stopIndex = startIndex + 1 + stopMatch.index;
-        endIndex = Math.min(endIndex, stopIndex);
-      }
-    }
-    
-    const content = commercialText.slice(startIndex, endIndex);
-    const estimatedTokens = estimateTokens(content);
-    
-    subsections.push({
-      sectionName,
-      startIndex,
-      endIndex,
-      content,
-      estimatedTokens,
-    });
-  }
-  
-  // Sort by start index to ensure proper order
-  subsections.sort((a, b) => a.startIndex - b.startIndex);
-  
-  return subsections;
 }
 
 /**
