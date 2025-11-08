@@ -770,10 +770,17 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const pdfBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
+
+    // Try to insert with summary_stats if column exists, otherwise without
+    // Helper to convert "Unknown" strings to null for database
+    const cleanValue = (val: any) => (val === "Unknown" || val === "" || val === undefined) ? null : val;
+    
     const insertData: any = {
       gazette_type,
-      issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
-      issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
+      issue_number: cleanValue(issue_number) || cleanValue(gazetteResponse.gazette?.issueNumber) || null,
+      issue_date: cleanValue(issue_date) || cleanValue(gazetteResponse.gazette?.publicationDate) || null,
+      pdf_bytes: pdfBytes,
       full_analysis: JSON.stringify({
         status: gazetteResponse.status,
         summary: summaryStats,
@@ -827,11 +834,11 @@ Deno.serve(async (req: Request) => {
         liquidators: notice.liquidators,
         contact_emails: notice.contactEmails,
         court_cause_no: notice.courtCauseNo,
-        liquidation_date: notice.liquidationDate,
-        final_meeting_date: notice.finalMeetingDate,
+        liquidation_date: cleanValue(notice.liquidationDate),
+        final_meeting_date: cleanValue(notice.finalMeetingDate),
         notes: notice.notes,
         appointment_type: notice.liquidationType,
-        appointment_date: notice.liquidationDate,
+        appointment_date: cleanValue(notice.liquidationDate),
         liquidator_name: notice.liquidators?.length > 0 ? notice.liquidators[0] : null,
         liquidator_contact: notice.contactEmails?.length > 0 ? notice.contactEmails.join(", ") : null,
         raw_notice_text: notice.notes,
