@@ -1,10 +1,10 @@
 -- Create analyzed_gazette_pdfs table
+-- Note: pdf_bytes column was removed in migration 20251010164059_remove_pdf_bytes_from_analyzed_tables.sql
 CREATE TABLE IF NOT EXISTS analyzed_gazette_pdfs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   gazette_type text NOT NULL CHECK (gazette_type IN ('regular', 'extraordinary')),
   issue_number text,
   issue_date date,
-  pdf_bytes bytea NOT NULL,
   full_analysis text NOT NULL,
   notices_count integer DEFAULT 0,
   extraction_metadata jsonb DEFAULT '{}'::jsonb,
