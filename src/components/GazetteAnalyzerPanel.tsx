@@ -88,7 +88,7 @@ export function GazetteAnalyzerPanel() {
       setGazetteMetadata(null);
       setTokensUsed(null);
 
-      setProcessingStep('Analyzing Gazette PDF with Claude...');
+      setProcessingStep('Preparing PDF for analysis...');
 
       const arrayBuffer = await file.arrayBuffer();
       const base64 = btoa(
@@ -97,6 +97,10 @@ export function GazetteAnalyzerPanel() {
           ''
         )
       );
+
+      // Estimate file size for user feedback
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      setProcessingStep(`Analyzing ${fileSizeMB}MB gazette with Claude AI...`);
 
       const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-gazette-with-claude`;
       const response = await fetch(analyzeUrl, {
@@ -128,11 +132,14 @@ export function GazetteAnalyzerPanel() {
 
       if (!result.success) {
         const errorMsg = result.error || 'Analysis failed';
+        if (errorMsg.includes('batch') || errorMsg.includes('Batch')) {
+          throw new Error(`Batch processing encountered an issue: ${errorMsg}. Please try uploading the gazette again.`);
+        }
         if (errorMsg.includes('truncated') || errorMsg.includes('too many')) {
-          throw new Error('This gazette contains too many notices to process in one request. The AI response was cut off. Please contact support for assistance with large gazettes.');
+          throw new Error('The gazette was too large and response was truncated. The system will automatically use batch processing on retry. Please upload again.');
         }
         if (errorMsg.includes('parse') || errorMsg.includes('JSON')) {
-          throw new Error('Failed to process gazette response. The AI may have returned incomplete data. Please try uploading the gazette again. If this persists, the gazette may be too large.');
+          throw new Error('Failed to process gazette response. The AI may have returned incomplete data. Please try uploading the gazette again.');
         }
         throw new Error(errorMsg);
       }
@@ -141,7 +148,10 @@ export function GazetteAnalyzerPanel() {
       setSummaryStats(result.summary || null);
       setGazetteMetadata(result.gazette_metadata || null);
       setTokensUsed(result.tokens_used);
-      setProcessingStep('Complete!');
+      
+      // Show completion message with processing mode info
+      const processingMode = result.tokens_used?.processing_mode || 'single-pass';
+      setProcessingStep(`Complete! (${processingMode === 'batch' ? 'Batch processed' : 'Single-pass'})`);
 
       window.dispatchEvent(new CustomEvent('gazette-pdf-analyzed'));
     } catch (err: any) {
@@ -310,7 +320,10 @@ export function GazetteAnalyzerPanel() {
                   Drop Gazette PDF here or click to browse
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Extracts notices from "Voluntary Liquidator and Creditor Notices" section (max 30MB)
+                  Analyzes all 7 COMMERCIAL subsections including liquidations, bankruptcies, and receiverships (max 30MB)
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Intelligent batch processing handles gazettes of any size
                 </p>
               </div>
               <input
@@ -335,9 +348,12 @@ export function GazetteAnalyzerPanel() {
         <div className="flex flex-col items-center justify-center py-12 gap-4">
           <Loader className="animate-spin text-blue-600" size={48} />
           <p className="text-lg font-medium text-gray-900">{processingStep}</p>
-          <p className="text-sm text-gray-500">
-            Extracting liquidation notices from the gazette...
-          </p>
+          <div className="text-sm text-gray-500 text-center max-w-md">
+            <p>Extracting liquidation notices from 7 COMMERCIAL subsections...</p>
+            <p className="mt-2 text-xs">
+              Large gazettes are automatically processed in batches for optimal performance.
+            </p>
+          </div>
         </div>
       )}
 
