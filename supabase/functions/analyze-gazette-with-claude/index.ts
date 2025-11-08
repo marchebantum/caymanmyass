@@ -768,31 +768,34 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
 
+    // Try to insert with summary_stats if column exists, otherwise without
+    const insertData: any = {
+      gazette_type,
+      issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
+      issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
+      pdf_bytes: pdfBytes,
+      full_analysis: JSON.stringify({
+        status: gazetteResponse.status,
+        summary: summaryStats,
+        notices_count: notices.length,
+        processing_mode: processingMode,
+      }),
+      notices_count: notices.length,
+      extraction_metadata: {
+        claude_model: "claude-sonnet-4-20250514",
+        gazette_type: gazetteResponse.gazette?.type || gazette_type,
+        status: gazetteResponse.status,
+        processing_mode: processingMode,
+        estimated_input_tokens: totalEstimatedInputTokens,
+        summary_stats: summaryStats, // Store in metadata as backup
+      },
+      llm_tokens_used: tokensUsed,
+      uploaded_by: "user",
+    };
+
     const { data: gazetteRecord, error: gazetteError } = await supabase
       .from("analyzed_gazette_pdfs")
-      .insert({
-        gazette_type,
-        issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
-        issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
-        pdf_bytes: pdfBytes,
-        full_analysis: JSON.stringify({
-          status: gazetteResponse.status,
-          summary: summaryStats,
-          notices_count: notices.length,
-          processing_mode: processingMode,
-        }),
-        notices_count: notices.length,
-        summary_stats: summaryStats,
-        extraction_metadata: {
-          claude_model: "claude-sonnet-4-20250514",
-          gazette_type: gazetteResponse.gazette?.type || gazette_type,
-          status: gazetteResponse.status,
-          processing_mode: processingMode,
-          estimated_input_tokens: totalEstimatedInputTokens,
-        },
-        llm_tokens_used: tokensUsed,
-        uploaded_by: "user",
-      })
+      .insert(insertData)
       .select()
       .single();
 
