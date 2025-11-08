@@ -34,17 +34,37 @@ Extract from these COMMERCIAL subsections ONLY (in this exact order):
 
 ❌ DO NOT extract from: Dormant Accounts Notices, Notice of Special Strike, Reduction of Capital, Certificate of Merger Notices, Transfer of Companies, Struck-off Lists, Demand Notices, Regulatory Agency Notices, General Commercial Notices, or GOVERNMENT sections
 
+🔍 CRITICAL: Gazettes have two parts:
+1. CONTENTS PAGE (front pages) - Shows table of contents with page numbers where each section starts
+2. ACTUAL CONTENT (numbered pages like Pg.1387) - Contains the full text of liquidation notices
+
+You MUST read the ACTUAL CONTENT pages, not just the CONTENTS page. When the contents shows "Liquidation Notices...Pg.1387", you must navigate to page 1387 in the document and extract from there.
+
+EXAMPLE: If CONTENTS shows:
+- "Liquidation Notices...Pg.1387" → Go to page 1387, extract all liquidation notices
+- "Partnership Notices...Pg.1415" → Go to page 1415, extract all partnership notices
+- "Grand Court Notices...None" → Skip this section entirely, no content to extract
+
+DO NOT return status "no_data" unless ALL target sections show "None" or are absent. Even if only ONE section has content, you must extract it and return status "success".
+
 STEP 1: DOCUMENT VALIDATION
 Before extraction, perform these validation checks:
 
 - Identify the gazette type: Gazette or Extraordinary Gazette
 - Extract gazette metadata: Issue number (e.g., "22/2025", "Ex84/2025"), Publication date (e.g., "Monday, 27 October 2025")
-- Locate the CONTENTS page (if present) and identify page numbers for each target section
-- Validate each target section: If section exists → Proceed to extract; If section shows "None" or absent → Skip that section
+- Locate the CONTENTS page (if present) - this is just an INDEX showing where sections are located
+- For each target section: Check if it has a page number (e.g., "Pg.1387") OR shows "None"
+  - If page number exists → PROCEED to that page number and extract content
+  - If it shows "None" → SKIP only that specific subsection (other subsections may still have content)
+- IMPORTANT: The CONTENTS page is separate from the actual content. You must navigate to the page numbers listed to find the actual liquidation notices.
 - Special validation for Grand Court Notices: Extract ONLY notices containing terms like "liquidation", "winding up", "liquidator appointed", "cause no.", or "FSD"
 
 STEP 2: SECTION BOUNDARY IDENTIFICATION
-For EACH target section that exists, identify clear start and end boundaries by section headings.
+For EACH target section that has a page number in the CONTENTS:
+- Navigate to that page number in the document
+- Look for the section heading (e.g., "Liquidation Notices, Notices of Winding Up, Appointment of Voluntary Liquidators and Notices to Creditors")
+- Identify clear start and end boundaries by section headings
+- Extract ALL notices between the section start and the next section heading
 
 STEP 3: EXTRACTION RULES BY SECTION
 
