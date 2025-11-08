@@ -770,9 +770,6 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const pdfBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
-
-    // Try to insert with summary_stats if column exists, otherwise without
     // Helper to convert "Unknown" strings to null for database
     const cleanValue = (val: any) => (val === "Unknown" || val === "" || val === undefined) ? null : val;
     
@@ -780,7 +777,6 @@ Deno.serve(async (req: Request) => {
       gazette_type,
       issue_number: cleanValue(issue_number) || cleanValue(gazetteResponse.gazette?.issueNumber) || null,
       issue_date: cleanValue(issue_date) || cleanValue(gazetteResponse.gazette?.publicationDate) || null,
-      pdf_bytes: pdfBytes,
       full_analysis: JSON.stringify({
         status: gazetteResponse.status,
         summary: summaryStats,
