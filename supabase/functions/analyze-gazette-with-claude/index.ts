@@ -764,6 +764,16 @@ Deno.serve(async (req: Request) => {
     console.log(`Extracted ${notices.length} liquidation notices using ${processingMode} mode`);
     console.log(`Summary: ${summaryStats.totalEntities} total, ${summaryStats.companiesVoluntary} voluntary companies, ${summaryStats.companiesCourtOrdered} court-ordered companies, ${summaryStats.partnershipsVoluntary} partnerships`);
 
+    // DIAGNOSTIC: Log if no notices were found
+    if (notices.length === 0) {
+      console.warn("⚠️  NO LIQUIDATION NOTICES FOUND");
+      console.warn("Response status:", gazetteResponse.status);
+      console.warn("Response message:", gazetteResponse.message || "No message provided");
+      if (gazetteResponse.gazette) {
+        console.warn("Gazette metadata:", JSON.stringify(gazetteResponse.gazette));
+      }
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const pdfBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
