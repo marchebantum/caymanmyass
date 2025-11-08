@@ -10,6 +10,7 @@ import {
   type CommercialSectionAnalysis,
   type SectionInfo,
 } from "./pdf-section-splitter.ts";
+import { PDFExtract } from "npm:pdf.js-extract@0.2.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -355,56 +356,37 @@ function parseClaudeResponse(text: string): GazetteResponse {
   throw new Error(`All parsing strategies failed. Last error: ${lastError?.message || 'Unknown'}. Text length: ${cleanedText.length}`);
 }
 
-async function extractPdfText(
-  pdf_base64: string,
-  anthropicApiKey: string
-): Promise<string> {
-  console.log("Extracting text from PDF using Claude...");
-  
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": anthropicApiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdf_base64,
-              },
-            },
-            {
-              type: "text",
-              text: "Extract all text from this document. Return ONLY the extracted text, with no additional commentary or formatting. Preserve the original structure and headings.",
-            },
-          ],
-        },
-      ],
-    }),
-  });
+async function extractPdfText(pdf_base64: string): Promise<string> {
+  console.log("Extracting text from PDF using pdf.js-extract...");
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to extract PDF text: ${response.status} - ${error}`);
+  const pdfBytes = Uint8Array.from(atob(pdf_base64), (c) => c.charCodeAt(0));
+
+  try {
+    const pdfExtractor = new PDFExtract();
+    const data = await pdfExtractor.extractBuffer(pdfBytes);
+
+    const extractedText = data.pages
+      .map((page: any, index: number) => {
+        const pageText = page.content
+          .map((item: any) => item.str)
+          .join(" ");
+        return `\n--- PAGE ${index + 1} ---\n${pageText}`;
+      })
+      .join("\n\n");
+
+    console.log(
+      `PDF text extraction complete. Pages: ${data.pages.length}, characters: ${extractedText.length}`
+    );
+
+    return extractedText;
+  } catch (error) {
+    console.error("Failed to extract PDF text via pdf.js-extract:", error);
+    throw new Error(
+      `Failed to extract PDF text via pdf.js-extract: ${
+        (error as Error).message ?? error
+      }`
+    );
   }
-
-  const result = await response.json();
-  const extractedText = result.content[0].text;
-  
-  console.log(`Extracted ${extractedText.length} characters from PDF`);
-  console.log(`Tokens used for extraction: ${result.usage?.total_tokens || 0}`);
-  
-  return extractedText;
 }
 
 async function analyzeWithClaude(
@@ -500,6 +482,7 @@ async function processSectionBatches(
     const batchContent = batch.map(s => s.content).join('\n\n');
     const batchTokens = estimateTokens(batchContent);
     const maxTokens = calculateMaxTokens(batchTokens);
+    console.log(`Batch ${i + 1} text preview (first 400 chars): ${batchContent.substring(0, 400).replace(/\s+/g, ' ')}`);
     
     const batchPrompt = GAZETTE_PROMPT.replace(
       /Extract from these COMMERCIAL subsections ONLY.*?(?=STEP 1)/s,
@@ -611,7 +594,7 @@ Deno.serve(async (req: Request) => {
       processingMode = 'batch';
       
       try {
-        const pdfText = await extractPdfText(pdf_base64, anthropicApiKey);
+        const pdfText = await extractPdfText(pdf_base64);
         const analysis = analyzeCommercialSection(pdfText, 180000);
         
         if (analysis.subsections.length === 0) {
