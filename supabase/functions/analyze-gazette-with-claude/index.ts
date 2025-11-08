@@ -775,7 +775,12 @@ Deno.serve(async (req: Request) => {
         issue_number: issue_number || gazetteResponse.gazette?.issueNumber || null,
         issue_date: issue_date || gazetteResponse.gazette?.publicationDate || null,
         pdf_bytes: pdfBytes,
-        full_analysis: JSON.stringify(gazetteResponse, null, 2),
+        full_analysis: JSON.stringify({
+          status: gazetteResponse.status,
+          summary: summaryStats,
+          notices_count: notices.length,
+          processing_mode: processingMode,
+        }),
         notices_count: notices.length,
         summary_stats: summaryStats,
         extraction_metadata: {
