@@ -74,7 +74,7 @@ export function AnalyzedGazettesSection() {
       if (error) throw error;
 
       // Extract gazette metadata and summary stats from the gazette record
-      const summaryStats = (gazette as any).summary_stats || null;
+      const summaryStats = (gazette as any).extraction_metadata?.summary_stats || null;
       const gazetteMetadata = {
         type: gazette.gazette_type === 'regular' ? 'Gazette' : 'Extraordinary',
         issueNumber: gazette.issue_number || 'Unknown',
@@ -214,12 +214,12 @@ export function AnalyzedGazettesSection() {
                   <p className="text-sm font-medium text-gray-700">
                     {gazette.notices_count} {gazette.notices_count === 1 ? 'Notice' : 'Notices'} Extracted
                   </p>
-                  {(gazette as any).summary_stats && (
+                  {(gazette as any).extraction_metadata?.summary_stats && (
                     <div className="text-xs text-gray-600 grid grid-cols-2 gap-1">
-                      <div>Vol: {(gazette as any).summary_stats.companiesVoluntary || 0}</div>
-                      <div>Court: {(gazette as any).summary_stats.companiesCourtOrdered || 0}</div>
-                      <div>Partners: {(gazette as any).summary_stats.partnershipsVoluntary || 0}</div>
-                      <div>Final: {(gazette as any).summary_stats.entitiesWithFinalMeetings || 0}</div>
+                      <div>Vol: {(gazette as any).extraction_metadata.summary_stats.companiesVoluntary || 0}</div>
+                      <div>Court: {(gazette as any).extraction_metadata.summary_stats.companiesCourtOrdered || 0}</div>
+                      <div>Partners: {(gazette as any).extraction_metadata.summary_stats.partnershipsVoluntary || 0}</div>
+                      <div>Final: {(gazette as any).extraction_metadata.summary_stats.entitiesWithFinalMeetings || 0}</div>
                     </div>
                   )}
                 </div>
